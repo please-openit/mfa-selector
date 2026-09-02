@@ -1,0 +1,13 @@
+{
+  "name": "mfa-selector-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End to end tests for the Keycloak second factor selector",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}

@@ -1,0 +1,101 @@
+name: Release
+
+# The tag is the release trigger and the source of truth for what is being released:
+# v<add-on version>-kc.<keycloak version>, for instance v1.0.0-kc.26.7.3.
+on:
+  push:
+    tags: ['v*-kc.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Read the tag and check the project agrees with it
+        id: release
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-kc\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$tag' is not of the form v<add-on version>-kc.<keycloak version>, for instance v1.0.0-kc.26.7.3"
+            exit 1
+          fi
+
+          pom_version="$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "$pom_version" != "$version" ]; then
+            echo "::error::Tag says $version but the pom says $pom_version"
+            exit 1
+          fi
+
+          # The tag claims compatibility with a Keycloak version, so the build has to be against it.
+          tag_keycloak="${version#*-kc.}"
+          pom_keycloak="$(mvn -B -q help:evaluate -Dexpression=keycloak.version -DforceStdout)"
+          if [ "$pom_keycloak" != "$tag_keycloak" ]; then
+            echo "::error::Tag claims Keycloak $tag_keycloak but the pom builds against $pom_keycloak"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "keycloak=$tag_keycloak" >> "$GITHUB_OUTPUT"
+
+      - name: Build and run the unit tests
+        run: mvn -B verify
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Start Keycloak and the directory
+        run: docker compose -f docker/docker-compose.yml up -d --build --wait
+
+      - name: Run the end to end tests
+        working-directory: e2e
+        run: |
+          npm ci
+          npm test
+
+      - name: Server logs
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs --no-color --tail 200
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          KEYCLOAK: ${{ steps.release.outputs.keycloak }}
+        run: |
+          jar="target/mfa-selector-${VERSION}.jar"
+          sha256sum "$jar" | awk '{print $1}' > "${jar}.sha256"
+
+          cat > notes.md <<EOF
+          Built against **Keycloak ${KEYCLOAK}**, and tested against it end to end.
+
+          \`\`\`bash
+          cp mfa-selector-${VERSION}.jar \$KEYCLOAK_HOME/providers/
+          \$KEYCLOAK_HOME/bin/kc.sh build
+          \`\`\`
+
+          Then add **Second Factor Selector** to a browser flow, after the password form. See the
+          [README](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/README.md).
+          EOF
+
+          gh release create "$GITHUB_REF_NAME" \
+            --title "MFA Selector ${VERSION%%-kc.*} for Keycloak ${KEYCLOAK}" \
+            --notes-file notes.md \
+            --generate-notes \
+            "$jar" "${jar}.sha256"

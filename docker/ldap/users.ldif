@@ -1,0 +1,33 @@
+# A user whose password lives in the directory only: no credential of any kind is stored in
+# Keycloak for them, which is the topology where only passwords are delegated to an AD/LDAP.
+
+dn: ou=users,dc=example,dc=org
+objectClass: organizationalUnit
+ou: users
+
+dn: uid=grace,ou=users,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: grace
+cn: Grace Example
+sn: Example
+givenName: Grace
+mail: grace@example.org
+userPassword: password
+
+dn: uid=heidi,ou=users,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: heidi
+cn: Heidi Example
+sn: Example
+givenName: Heidi
+mail: heidi@example.org
+userPassword: password
+
+dn: uid=olivier,ou=users,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: olivier
+cn: Olivier Démo
+sn: Démo
+givenName: Olivier
+mail: olivier@example.org
+userPassword: password
