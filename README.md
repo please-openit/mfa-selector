@@ -317,4 +317,4 @@ be replayed without restarting the server.
 
 ## Licence
 
-[Apache License 2.0](LICENSE), the licence Keycloak itself uses.
+[Apache License 2.0](LICENSE)
