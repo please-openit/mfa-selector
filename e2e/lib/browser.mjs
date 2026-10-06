@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import puppeteer from 'puppeteer';
 
@@ -7,33 +6,34 @@ import { BASE_URL, REALM } from './keycloak.mjs';
 import { totp } from './totp.mjs';
 
 const CLIENT_ID = 'e2e-app';
-const CALLBACK_PORT = Number(process.env.E2E_CALLBACK_PORT ?? 3000);
-const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}/callback`;
+// Registered as the client's redirect URI in both realms. Nothing listens on that port: the browser
+// answers it itself, see answerCallback.
+const REDIRECT_URI = 'http://localhost:3000/callback';
 const NAVIGATION = { waitUntil: 'domcontentloaded', timeout: 15000 };
-
-let callbackServer;
 
 /**
  * The application the user is signing in to, reduced to what the tests need: a page that only
  * exists once Keycloak has redirected back with an authorization code.
+ *
+ * The redirect is caught inside Chrome through the DevTools Fetch domain and answered there, so the
+ * request never reaches the network. A real server on that port would depend on the port being free:
+ * when another process holds it, `localhost` may resolve to that process (on ::1, for instance) and
+ * the tests land on a page that is not theirs.
  */
-async function ensureCallbackServer() {
-  if (callbackServer) {
-    return;
-  }
+async function answerCallback(cdp) {
+  const body = Buffer.from('<!doctype html><html><body><h1 id="signed-in">signed in</h1></body></html>')
+    .toString('base64');
 
-  callbackServer = createServer((request, response) => {
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    response.end('<!doctype html><html><body><h1 id="signed-in">signed in</h1></body></html>');
+  cdp.on('Fetch.requestPaused', ({ requestId }) => {
+    cdp.send('Fetch.fulfillRequest', {
+      requestId,
+      responseCode: 200,
+      responseHeaders: [{ name: 'content-type', value: 'text/html; charset=utf-8' }],
+      body,
+    }).catch(() => {});
   });
 
-  await new Promise((resolve, reject) => {
-    callbackServer.once('error', reject);
-    callbackServer.listen(CALLBACK_PORT, '127.0.0.1', resolve);
-  });
-
-  // Lets the test process exit without an explicit shutdown.
-  callbackServer.unref();
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: `${REDIRECT_URI}*`, requestStage: 'Request' }] });
 }
 
 /**
@@ -43,8 +43,6 @@ async function ensureCallbackServer() {
  *               so a test wanting to see what a French speaking user sees has to ask for French.
  */
 export async function newSession({ locale = 'en' } = {}) {
-  await ensureCallbackServer();
-
   const browser = await puppeteer.launch({
     headless: process.env.E2E_HEADFUL !== 'true',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
@@ -52,9 +50,6 @@ export async function newSession({ locale = 'en' } = {}) {
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1024, height: 900 });
-
-  // Pins the language whatever the machine running the tests is set to.
-  await page.setExtraHTTPHeaders({ 'accept-language': locale });
 
   // The WebAuthn registration script asks for a label through window.prompt(). The dialog can be
   // gone already if the page moved on, which is fine.
@@ -65,6 +60,15 @@ export async function newSession({ locale = 'en' } = {}) {
   // A single, long lived DevTools session: detaching one tears down the virtual authenticators of
   // the whole page, so security keys would vanish half way through a scenario.
   const cdp = await page.createCDPSession();
+
+  // Pins the language whatever the machine running the tests is set to, as the browser's own
+  // Accept-Language rather than as an extra request header. Extra headers set through DevTools are
+  // not carried over a redirect, and Keycloak reaches the OTP setup screen and the account console
+  // through one: those pages came in the language of the machine, English on a GitHub runner
+  // (reproduced with Chrome 148 set to en-US, 2026-10-06: the account console listed "Signing in"
+  // where the scenario expects "Connexion").
+  await cdp.send('Network.setUserAgentOverride', { userAgent: await browser.userAgent(), acceptLanguage: locale });
+  await answerCallback(cdp);
 
   return {
     page,

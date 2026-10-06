@@ -7,7 +7,7 @@ COPY pom.xml ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests
 
-FROM quay.io/keycloak/keycloak:26.7.3
+FROM quay.io/keycloak/keycloak:26.8.0
 
 COPY --from=build /workspace/target/mfa-selector-*.jar /opt/keycloak/providers/
 

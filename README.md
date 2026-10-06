@@ -243,14 +243,15 @@ git push origin v1.0.0-kc.26.7.3
 
 [The release workflow](.github/workflows/release.yml) then refuses to go on unless the tag is of the
 form `v<add-on version>-kc.<keycloak version>` and says the same as the pom, both for the add-on
-version and for the Keycloak the build actually compiles against. A tag can therefore never claim a
-compatibility the artefact does not have. It runs the unit tests, brings up Keycloak and the
-directory and runs the whole end to end suite against them, and only then publishes the release with
-the jar and its SHA-256.
+version and for the Keycloak the build actually compiles against, and unless
+[docker/Dockerfile](docker/Dockerfile) runs that same Keycloak. A tag can therefore never claim a
+compatibility the artefact does not have, nor end to end tests it did not go through. It runs the
+unit tests, brings up Keycloak and the directory and runs the whole end to end suite against them,
+and only then publishes the release with the jar and its SHA-256.
 
 So releasing a fix against a newer Keycloak means bumping `keycloak.version` and `version` in the
-pom together, then tagging to match. [The build workflow](.github/workflows/build.yml) runs the unit
-tests on every push and pull request.
+pom together with the `FROM quay.io/keycloak/keycloak` line of the Dockerfile, then tagging to match.
+[The build workflow](.github/workflows/build.yml) runs the unit tests on every push and pull request.
 
 ## Layout
 
@@ -264,7 +265,7 @@ src/main/java/it/pleaseopen/keycloak/mfaselector/
   EnrolmentSchedule.java                         the window during which postponing is offered
   PendingEnrolments.java                         what this authenticator armed, so it can take it back
 src/main/resources/theme-resources/              the screen and its translations
-docker/                                          Keycloak 26.7.3, an OpenLDAP and the demo realms
+docker/                                          Keycloak 26.8.0, an OpenLDAP and the demo realms
 e2e/                                             Puppeteer tests driving a real browser
 ```
 
@@ -301,6 +302,12 @@ French with no message key left showing.
 
 WebAuthn runs against a Chrome virtual authenticator, so no hardware is involved. Set
 `E2E_HEADFUL=true` to watch the browser.
+
+`npm test` first makes sure the Chrome build the installed Puppeteer expects is in the Puppeteer
+cache, and downloads it if not; `npm install` alone only does so when it actually installs
+Puppeteer. The browser is held to the language each scenario asks for whatever the machine is set
+to, and answers the application's callback, `http://localhost:3000/callback`, itself: nothing has
+to listen on port 3000, and a process already using that port does not get in the way.
 
 The stack exposes `mfa-demo` and `mfa-flow-demo` on <http://localhost:8080>, with an admin at
 `admin`/`admin`. `mfa-demo` has the local users `alice`, `bob`, `carol`, `dave`, `erin` and `frank`

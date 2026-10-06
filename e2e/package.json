@@ -5,6 +5,7 @@
   "type": "module",
   "description": "End to end tests for the Keycloak second factor selector",
   "scripts": {
+    "pretest": "puppeteer browsers install chrome",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "devDependencies": {

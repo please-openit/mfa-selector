@@ -48,6 +48,14 @@ jobs:
             exit 1
           fi
 
+          # The release notes say the jar was tested end to end against that Keycloak, so the image
+          # the end to end tests run on has to be that one too.
+          docker_keycloak="$(sed -n 's|^FROM quay.io/keycloak/keycloak:\([^ ]*\).*|\1|p' docker/Dockerfile)"
+          if [ "$docker_keycloak" != "$tag_keycloak" ]; then
+            echo "::error::Tag claims Keycloak $tag_keycloak but the end to end tests run against $docker_keycloak (docker/Dockerfile)"
+            exit 1
+          fi
+
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "keycloak=$tag_keycloak" >> "$GITHUB_OUTPUT"
 
