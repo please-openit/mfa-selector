@@ -10,7 +10,7 @@
         The version carries what the add-on is, and which Keycloak it was built for. A release is cut
         by tagging v${project.version}; the release workflow refuses a tag that says anything else.
     -->
-    <version>1.0.0-kc.26.7.3</version>
+    <version>1.0.0-kc.26.8.0</version>
     <packaging>jar</packaging>
 
     <name>Keycloak MFA Selector</name>
@@ -30,7 +30,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
 
-        <keycloak.version>26.7.3</keycloak.version>
+        <keycloak.version>26.8.0</keycloak.version>
 
         <jakarta.ws.rs.version>3.1.0</jakarta.ws.rs.version>
 
